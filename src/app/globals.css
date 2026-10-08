@@ -1,0 +1,195 @@
+@import "tailwindcss";
+
+/*
+ * Tasarım token'ları. Açık tema varsayılan; koyu tema sistem tercihine uyar.
+ * Renkler OKLCH: algısal olarak dengeli ton geçişleri için.
+ */
+:root {
+  --bg: oklch(0.982 0.004 270);
+  --bg-grad: oklch(0.965 0.018 285);
+  --surface: oklch(1 0 0);
+  --surface-2: oklch(0.972 0.006 270);
+  --surface-3: oklch(0.945 0.009 270);
+  --border: oklch(0.915 0.01 270);
+  --border-strong: oklch(0.86 0.014 270);
+  --text: oklch(0.21 0.025 275);
+  --muted: oklch(0.5 0.022 275);
+  --subtle: oklch(0.64 0.018 275);
+
+  --accent: oklch(0.54 0.21 277);
+  --accent-2: oklch(0.58 0.22 305);
+  --accent-soft: oklch(0.955 0.03 280);
+  --accent-text: oklch(0.47 0.2 277);
+
+  --success: oklch(0.58 0.15 155);
+  --success-soft: oklch(0.955 0.045 155);
+  --warning: oklch(0.56 0.14 65);
+  --warning-soft: oklch(0.965 0.055 85);
+  --danger: oklch(0.56 0.2 25);
+  --danger-soft: oklch(0.955 0.03 20);
+  --info: oklch(0.55 0.15 240);
+  --info-soft: oklch(0.955 0.03 240);
+
+  --sidebar: oklch(0.2 0.045 278);
+  --sidebar-2: oklch(0.16 0.04 285);
+  --sidebar-text: oklch(0.86 0.02 278);
+  --sidebar-muted: oklch(0.66 0.035 278);
+  --sidebar-active: oklch(0.32 0.08 280);
+
+  --shadow-sm: 0 1px 2px oklch(0.2 0.03 275 / 0.06), 0 1px 1px oklch(0.2 0.03 275 / 0.04);
+  --shadow-md: 0 8px 24px -8px oklch(0.25 0.06 275 / 0.14), 0 2px 6px oklch(0.2 0.03 275 / 0.05);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: oklch(0.155 0.014 275);
+    --bg-grad: oklch(0.19 0.035 285);
+    --surface: oklch(0.195 0.016 275);
+    --surface-2: oklch(0.225 0.018 275);
+    --surface-3: oklch(0.26 0.02 275);
+    --border: oklch(0.29 0.02 275);
+    --border-strong: oklch(0.36 0.025 275);
+    --text: oklch(0.94 0.008 275);
+    --muted: oklch(0.72 0.02 275);
+    --subtle: oklch(0.58 0.02 275);
+
+    --accent: oklch(0.66 0.18 277);
+    --accent-2: oklch(0.68 0.19 305);
+    --accent-soft: oklch(0.29 0.07 280);
+    --accent-text: oklch(0.8 0.12 277);
+
+    --success: oklch(0.74 0.14 155);
+    --success-soft: oklch(0.29 0.06 155);
+    --warning: oklch(0.8 0.13 80);
+    --warning-soft: oklch(0.31 0.06 75);
+    --danger: oklch(0.72 0.16 25);
+    --danger-soft: oklch(0.3 0.07 25);
+    --info: oklch(0.74 0.12 240);
+    --info-soft: oklch(0.29 0.06 240);
+
+    --sidebar: oklch(0.17 0.03 280);
+    --sidebar-2: oklch(0.13 0.025 285);
+    --sidebar-active: oklch(0.28 0.07 280);
+
+    --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.3);
+    --shadow-md: 0 10px 30px -10px oklch(0 0 0 / 0.6);
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-text: var(--accent-text);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-text: var(--sidebar-text);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-active: var(--sidebar-active);
+  --shadow-card: var(--shadow-sm);
+  --shadow-pop: var(--shadow-md);
+  --font-sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", "Inter", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "Cascadia Mono", "JetBrains Mono", ui-monospace, monospace;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 500px at 85% -10%, var(--bg-grad), transparent 60%),
+    var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+.sidebar-bg {
+  background: linear-gradient(180deg, var(--sidebar) 0%, var(--sidebar-2) 100%);
+}
+
+.brand-grad {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-in {
+  animation: fade-up 0.22s ease-out both;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-3);
+  border-radius: 8px;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.35), transparent);
+  animation: shimmer 1.4s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-in,
+  .skeleton::after {
+    animation: none;
+  }
+}

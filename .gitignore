@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# Sırlar ve kişisel veriler
+.env
+.env.local
+.env.*.local
+data/
+
+# Yerel araç durumu (oh-my-claudecode oturum kayıtları)
+.omc/
