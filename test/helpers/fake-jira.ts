@@ -103,6 +103,9 @@ export function createFakeJira() {
       apply();
       return HttpResponse.json(v);
     }),
+    // Statü geçmişi tutulmaz; çağıranlar `statuscategorychangedate` yedeğine düşer.
+    http.post(`${JIRA}/rest/api/3/changelog/bulkfetch`, () => HttpResponse.json({ issueChangeLogs: [] })),
+    http.get(`${JIRA}/rest/api/3/status`, () => HttpResponse.json([...statuses.values()])),
     http.post(`${JIRA}/rest/api/3/search/jql`, async ({ request }) => {
       const body = (await request.json()) as { jql: string };
       const m = /fixVersion = (\d+)/.exec(body.jql);

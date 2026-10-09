@@ -37,17 +37,26 @@ export class TeamsError extends Error {
   }
 }
 
-export async function sendTeamsCard(rawUrl: string, card: AdaptiveCard, fetchImpl: typeof fetch = fetch): Promise<void> {
+/**
+ * Kartı webhook'a gönderir. `recipients` verilirse gövdeye eklenir; "Kişiler" akışı bu listedeki her
+ * adrese kartı ayrı ayrı iletir (kanal/sohbet şablonları bu alanı yok sayar).
+ */
+export async function sendTeamsCard(
+  rawUrl: string,
+  card: AdaptiveCard,
+  { recipients, flowKey, fetchImpl = fetch }: { recipients?: string[]; flowKey?: string; fetchImpl?: typeof fetch } = {},
+): Promise<void> {
   const check = validateWebhookUrl(rawUrl);
   if (!check.ok) throw new TeamsError(check.reason);
   let response: Response;
   try {
     response = await fetchImpl(check.url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(flowKey ? { "x-qa-key": flowKey } : {}) },
       body: JSON.stringify({
         type: "message",
         attachments: [{ contentType: "application/vnd.microsoft.card.adaptive", contentUrl: null, content: card }],
+        ...(recipients?.length ? { recipients } : {}),
       }),
       redirect: "error",
       signal: AbortSignal.timeout(20_000),

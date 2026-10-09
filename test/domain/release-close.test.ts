@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { acknowledgeJournal, executeReleaseClose, ReleaseCloseError, rollbackInterrupted, rollbackJournal } from "@/domain/release-close/executor";
+import { http, HttpResponse } from "msw";
+import { acknowledgeJournal, executeReleaseClose, notifyRelease, ReleaseCloseError, rollbackInterrupted, rollbackJournal } from "@/domain/release-close/executor";
 import { buildReleasePlan } from "@/domain/release-close/preflight";
 import type { Context } from "@/lib/server/context";
 import { setupFakeContext, STATUS, type FakeJira } from "../helpers/fake-jira";
+import { server } from "../helpers/msw";
+import { TeamsTargetError } from "@/lib/teams/send";
 
 let ctx: Context;
 let fake: FakeJira;
@@ -218,12 +221,23 @@ describe("Release kapatma — inceleme sonrası düzeltmeler", () => {
     expect(fake.versions.get("500")).toMatchObject({ released: false, releaseDate: "2026-10-10" });
   });
 
-  it("Teams hedefi bulunamasa da tamamlanmış kapatma başarılı döner, bildirim hatası kaydedilir", async () => {
+  it("Teams bildirimi başarısız olsa da tamamlanmış kapatma başarılı döner, bildirim hatası kaydedilir", async () => {
+    const url = "https://a.webhook.office.com/webhookb2/down";
+    await ctx.settings.update((s) => ({ ...s, teams: { ...s.teams, targets: [{ id: "t-down01", name: "QA", kind: "channel", url }] } }));
+    server.use(http.post(url, () => new HttpResponse(null, { status: 500 })));
     seed({ "DEMO-1": DONE });
     const plan = await buildReleasePlan(ctx, "500");
-    const journal = await executeReleaseClose(ctx, "500", plan.fingerprint, "t-yokboyle1");
+    const journal = await executeReleaseClose(ctx, "500", plan.fingerprint, { targetId: "t-down01", contactIds: [] });
     expect(journal.state).toBe("committed");
     expect(journal.notifications.at(-1)).toMatchObject({ ok: false });
+  });
+
+  it("geçersiz Teams seçimi Jira'ya dokunmadan reddedilir", async () => {
+    seed({ "DEMO-1": TBD });
+    const plan = await buildReleasePlan(ctx, "500");
+    await expect(executeReleaseClose(ctx, "500", plan.fingerprint, { targetId: "t-yokboyle1", contactIds: [] })).rejects.toBeInstanceOf(TeamsTargetError);
+    expect(fake.statusOf("DEMO-1")).toBe(TBD);
+    expect(fake.versions.get("500")).toMatchObject({ released: false });
   });
 
   it("geri alması eksik kalan kayıt yeni kapatmayı engeller; elle düzeltildi onayıyla açılır", async () => {
@@ -267,3 +281,64 @@ describe("Release kapatma — inceleme sonrası düzeltmeler", () => {
   });
 });
 
+describe("Release kapatma — Teams bildirimi", () => {
+  const url = "https://a.webhook.office.com/webhookb2/flow";
+
+  function capture() {
+    const bodies: Record<string, unknown>[] = [];
+    server.use(
+      http.post(url, async ({ request }) => {
+        bodies.push((await request.json()) as Record<string, unknown>);
+        return new HttpResponse(null, { status: 202 });
+      }),
+    );
+    return bodies;
+  }
+
+  it("sohbet hedefine kart gönderir, alıcı listesi eklemez ve kayda hedefin türünü yazar", async () => {
+    await ctx.settings.update((s) => ({ ...s, teams: { ...s.teams, targets: [{ id: "t-chat01", name: "Release ekibi", kind: "chat", url }] } }));
+    const bodies = capture();
+    seed({ "DEMO-1": TBD });
+    const { journal } = await close();
+    const notified = await notifyRelease(ctx, journal.runId, { targetId: "t-chat01", contactIds: [] });
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).not.toHaveProperty("recipients");
+    expect(notified.notifications.at(-1)).toMatchObject({ ok: true, targetName: "Release ekibi", targetKind: "chat" });
+  });
+
+  describe("Kişiler hedefi", () => {
+    beforeEach(async () => {
+      await ctx.settings.update((s) => ({
+        ...s,
+        teams: {
+          targets: [{ id: "t-people1", name: "Kişilere", kind: "people", url }],
+          contacts: [
+            { id: "c-ayse01", name: "Ayşe", email: "ayse@firma.com" },
+            { id: "c-mehmet1", name: "Mehmet", email: "mehmet@firma.com" },
+            { id: "c-zeynep1", name: "Zeynep", email: "zeynep@firma.com" },
+          ],
+        },
+      }));
+    });
+
+    it("yalnızca seçilen kişilerin e-postalarını gönderir ve adlarını kaydeder", async () => {
+      const bodies = capture();
+      seed({ "DEMO-1": TBD });
+      const plan = await buildReleasePlan(ctx, "500");
+      const journal = await executeReleaseClose(ctx, "500", plan.fingerprint, { targetId: "t-people1", contactIds: ["c-ayse01", "c-zeynep1", "c-ayse01"] });
+      expect(journal.state).toBe("committed");
+      expect(bodies[0]?.recipients).toEqual(["ayse@firma.com", "zeynep@firma.com"]);
+      expect(journal.notifications.at(-1)).toMatchObject({ ok: true, targetKind: "people", recipients: ["Ayşe", "Zeynep"] });
+    });
+
+    it("kişi seçilmediyse ya da listede olmayan kişi varsa Jira'ya dokunmadan reddeder", async () => {
+      const bodies = capture();
+      seed({ "DEMO-1": TBD });
+      const plan = await buildReleasePlan(ctx, "500");
+      await expect(executeReleaseClose(ctx, "500", plan.fingerprint, { targetId: "t-people1", contactIds: [] })).rejects.toThrow("en az bir kişi");
+      await expect(executeReleaseClose(ctx, "500", plan.fingerprint, { targetId: "t-people1", contactIds: ["c-yabanci1"] })).rejects.toThrow("kişi listesinde yok");
+      expect(fake.statusOf("DEMO-1")).toBe(TBD);
+      expect(bodies).toHaveLength(0);
+    });
+  });
+});

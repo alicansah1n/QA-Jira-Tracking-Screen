@@ -1,12 +1,14 @@
 import "server-only";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
+import { z } from "zod";
 import { createAnalysisStore, type AnalysisStore } from "@/domain/analysis/store";
 import { ISSUE_KEY_PATTERN } from "@/domain/analysis/schema";
 import { InboxSeenSchema, LEDGER_VERSION, LedgerSchema, type InboxSeen, type Ledger } from "@/domain/inbox/ledger";
 import { JOURNAL_VERSION, JournalSchema, type Journal } from "@/domain/release-close/journal";
 import { SETTINGS_VERSION, SettingsSchema, defaultSettings, type Settings } from "@/domain/settings/schema";
 import { TEST_RUN_VERSION, TestRunSchema, type TestRun } from "@/domain/testrun/schema";
+import { WEEKLY_VERSION, WeeklyStoreSchema, type WeeklyStore } from "@/domain/weekly/store";
 import { dataDir, loadEnv, requireEnv, type AppEnv } from "@/lib/config/env";
 import { getMyself } from "@/lib/jira/api";
 import { createJiraClient, type JiraClient } from "@/lib/jira/client";
@@ -25,6 +27,8 @@ export type Context = {
   settings: JsonDocument<Settings>;
   ledger: JsonDocument<Ledger>;
   inboxSeen: JsonDocument<InboxSeen>;
+  /** Haftalık rapor notları ve kayıtları. */
+  weeklyReports: JsonDocument<WeeklyStore>;
   run(issueKey: string): JsonDocument<TestRun | null>;
   journal(runId: string): JsonDocument<Journal | null>;
   listJournalIds(): Promise<string[]>;
@@ -46,11 +50,26 @@ function analysesDir(): string {
   return path.join(dataDir({ DATA_DIR: process.env.DATA_DIR ?? "./data" }), "analyses");
 }
 
+/**
+ * Kayıt şemalarının yapısı. Dev modunda kod değişince modüller yeniden yüklenir ama `globalThis`'teki
+ * bağlam eski şemayı tutmaya devam eder; eski şemayla yazılan dosyada yeni alanlar sessizce silinirdi.
+ * Yapı değişince bağlam yeniden kurulur.
+ */
+const SCHEMA_SIGNATURE = (() => {
+  try {
+    return [SettingsSchema, LedgerSchema, InboxSeenSchema, JournalSchema, TestRunSchema, WeeklyStoreSchema]
+      .map((s) => JSON.stringify(z.toJSONSchema(s, { unrepresentable: "any" })))
+      .join("|");
+  } catch {
+    return "";
+  }
+})();
+
 /** Jira bağlantısı gerektiren işler için bağlam. `.env.local` eksikse `EnvError` fırlatır. */
 export function getContext(): Context {
   trustSystemCertificates();
   const env = requireEnv();
-  const fingerprint = JSON.stringify(env);
+  const fingerprint = JSON.stringify(env) + SCHEMA_SIGNATURE;
   if (holder.__qaContext?.fingerprint === fingerprint) return holder.__qaContext.context;
 
   const context = buildContext(env, createJiraClient({ baseUrl: env.JIRA_BASE_URL, email: env.JIRA_EMAIL, apiToken: env.JIRA_API_TOKEN }));
@@ -86,6 +105,12 @@ export function buildContext(env: AppEnv, jira: JiraClient): Context {
       schema: InboxSeenSchema,
       defaults: () => ({ seen: {} }),
       version: 1,
+    }),
+    weeklyReports: createJsonDocument({
+      file: path.join(dir, "weekly-reports.json"),
+      schema: WeeklyStoreSchema,
+      defaults: () => ({ weeks: {} }),
+      version: WEEKLY_VERSION,
     }),
     run(issueKey) {
       if (!ISSUE_KEY_PATTERN.test(issueKey)) throw new Error(`Geçersiz madde anahtarı: ${issueKey}`);

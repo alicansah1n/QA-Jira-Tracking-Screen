@@ -13,7 +13,7 @@ import {
   transitionIssue,
 } from "@/lib/jira/operations";
 import { releaseClosedCard } from "@/lib/teams/cards";
-import { sendTeamsCard } from "@/lib/teams/webhook";
+import { deliverTeamsCard, resolveTeamsTarget, type TeamsSelection } from "@/lib/teams/send";
 import type { Context } from "@/lib/server/context";
 import { buildReleasePlan, type ReleasePlan } from "./preflight";
 import type { Journal, JournalStep } from "./journal";
@@ -90,7 +90,7 @@ export async function executeReleaseClose(
   ctx: Context,
   versionId: string,
   expectedFingerprint: string,
-  teamsTargetId: string | null,
+  teams: TeamsSelection | null,
 ): Promise<Journal> {
   // Bayrak ilk `await`'ten önce, eşzamanlı olarak alınır; aksi halde aynı anda gelen iki istek
   // kontrolü birlikte geçip aynı release'i iki kez işleyebilirdi.
@@ -98,20 +98,22 @@ export async function executeReleaseClose(
   holder.__qaReleaseRunning = true;
   try {
     if ((await activeJournals(ctx)).length) throw busy();
+    // Bildirim seçimi (hedef, kişiler) Jira'ya dokunmadan önce doğrulanır; hatalıysa hiçbir şey yapılmaz.
+    if (teams) resolveTeamsTarget(await ctx.settings.read(), teams);
     const plan = await buildReleasePlan(ctx, versionId);
     if (!plan.canExecute || !plan.statuses) throw new ReleaseCloseError("BLOCKED", "Release kapatmaya uygun değil.", plan.blockers);
     if (plan.fingerprint !== expectedFingerprint) {
       throw new ReleaseCloseError("DRIFT", "Önizlemeden sonra Jira'da değişiklik oldu (statü ya da release içeriği). Önizlemeyi yenileyin.");
     }
     const journal = await run(ctx, plan);
-    if (journal.state !== "committed" || !teamsTargetId) return journal;
+    if (journal.state !== "committed" || !teams) return journal;
     // Jira tamamlandı; bildirim hatası (ör. hedef silinmiş) sonucu "başarısız"a çevirmemeli.
     try {
-      return await notifyRelease(ctx, journal.runId, teamsTargetId);
+      return await notifyRelease(ctx, journal.runId, teams);
     } catch (error) {
       return (await ctx.journal(journal.runId).update((cur) => ({
         ...cur!,
-        notifications: [...cur!.notifications, { targetId: teamsTargetId, targetName: "?", at: nowIso(), ok: false, error: message(error) }],
+        notifications: [...cur!.notifications, { targetId: teams.targetId, targetName: "?", at: nowIso(), ok: false, error: message(error) }],
       })))!;
     }
   } finally {
@@ -325,20 +327,20 @@ function undoError(error: unknown): string {
 }
 
 /** Başarıyla kapatılmış release'i Teams'e bildirir. Hata Jira'yı etkilemez; tekrar denenebilir. */
-export async function notifyRelease(ctx: Context, runId: string, targetId: string): Promise<Journal> {
+export async function notifyRelease(ctx: Context, runId: string, selection: TeamsSelection): Promise<Journal> {
   const store = ctx.journal(runId);
   const journal = await store.read();
   if (!journal || journal.state !== "committed") throw new Error("Yalnızca tamamlanmış kapatmalar bildirilebilir");
   const settings = await ctx.settings.read();
-  const target = settings.teams.targets.find((t) => t.id === targetId);
-  if (!target) throw new Error("Teams hedefi bulunamadı");
+  const resolved = resolveTeamsTarget(settings, selection);
+  const { target, recipients } = resolved;
   const me = await ctx.myself().catch(() => undefined);
   const base = ctx.env.JIRA_BASE_URL;
   let ok = true;
   let error: string | undefined;
   try {
-    await sendTeamsCard(
-      target.url,
+    await deliverTeamsCard(
+      resolved,
       releaseClosedCard({
         projectName: settings.projects[journal.projectKey]?.name ?? journal.projectKey,
         versionName: journal.versionName,
@@ -356,6 +358,17 @@ export async function notifyRelease(ctx: Context, runId: string, targetId: strin
   }
   return (await store.update((cur) => ({
     ...cur!,
-    notifications: [...cur!.notifications, { targetId, targetName: target.name, at: nowIso(), ok, error }],
+    notifications: [
+      ...cur!.notifications,
+      {
+        targetId: target.id,
+        targetName: target.name,
+        targetKind: target.kind,
+        ...(recipients.length ? { recipients: recipients.map((r) => r.name) } : {}),
+        at: nowIso(),
+        ok,
+        error,
+      },
+    ],
   })))!;
 }

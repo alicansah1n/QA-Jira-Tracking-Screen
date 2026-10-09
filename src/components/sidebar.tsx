@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ClipboardCheck, Inbox, LayoutDashboard, PackageCheck, Rocket, Settings, Sparkles } from "lucide-react";
+import { CalendarRange, ClipboardCheck, Inbox, LayoutDashboard, PackageCheck, Rocket, Settings, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { api } from "@/lib/client/api";
@@ -14,6 +14,7 @@ const GROUPS = [
       { href: "/", label: "Genel Bakış", icon: LayoutDashboard },
       { href: "/inbox", label: "Gelen Kutusu", icon: Inbox },
       { href: "/tests", label: "Test Takibi", icon: ClipboardCheck },
+      { href: "/reports", label: "Haftalık Rapor", icon: CalendarRange },
     ],
   },
   {

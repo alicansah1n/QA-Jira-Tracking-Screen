@@ -22,13 +22,65 @@ export const TrackedProjectSchema = z.object({
 });
 export type TrackedProject = z.infer<typeof TrackedProjectSchema>;
 
-/** Teams Workflows ("Post to a channel when a webhook request is received") hedefi. */
+/**
+ * Teams Workflows hedefinin türü. Kanal ve sohbet hazır şablonla kurulan sabit hedeflerdir; "Kişiler" ise
+ * gönderilen `recipients` listesindeki herkese Workflows botuyla tek tek ileten genel bir akıştır.
+ */
+export const TEAMS_TARGET_KINDS = { channel: "Kanal", chat: "Sohbet", people: "Kişiler" } as const;
+export const TeamsTargetKindSchema = z.enum(["channel", "chat", "people"]);
+export type TeamsTargetKind = z.infer<typeof TeamsTargetKindSchema>;
+
+export const TEAMS_ID_PATTERN = /^[a-z0-9-]{6,40}$/;
+export const MAX_TEAMS_TARGETS = 20;
+export const MAX_TEAMS_CONTACTS = 200;
+
+// Kontrol, sıfır genişlikli ve yön değiştiren karakterler bir adı başka biri gibi gösterebilir.
+const UNSAFE_NAME_CHARS = /[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/;
+export const DisplayNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(80)
+  .refine((n) => !UNSAFE_NAME_CHARS.test(n), "Adda görünmez ya da yön değiştiren karakter olamaz");
+
+/** Teams Workflows webhook hedefi. */
 export const TeamsTargetSchema = z.object({
-  id: z.string().regex(/^[a-z0-9-]{6,40}$/),
-  name: z.string().trim().min(1).max(80),
+  id: z.string().regex(TEAMS_ID_PATTERN),
+  name: DisplayNameSchema,
+  // Tür eklenmeden önce kaydedilen hedefler kanal webhook'uydu.
+  kind: TeamsTargetKindSchema.default("channel"),
   url: z.url({ protocol: /^https$/ }),
+  /**
+   * Yalnızca Kişiler hedefinde: her istekte `x-qa-key` başlığıyla gönderilir; akış bunu doğrular. Adres
+   * sızsa bile anahtarı bilmeyen kimse akış üzerinden kişilere mesaj attıramaz.
+   */
+  flowKey: z.string().regex(/^[0-9a-f]{32}$/).optional(),
 });
 export type TeamsTarget = z.infer<typeof TeamsTargetSchema>;
+
+/** Bir gönderimde en fazla bu kadar kişi seçilebilir (akıştaki koşulla aynı sayı). */
+export const MAX_TEAMS_RECIPIENTS = 50;
+/** Deneme kartı en fazla bu kadar kişiye gider. */
+export const MAX_TEAMS_TEST_RECIPIENTS = 3;
+
+/** İstemcinin bir gönderim için seçtiği kişi kimlikleri. */
+export const TeamsContactIdsSchema = z
+  .array(z.string().regex(TEAMS_ID_PATTERN))
+  .max(MAX_TEAMS_RECIPIENTS, `Bir gönderimde en fazla ${MAX_TEAMS_RECIPIENTS} kişi seçilebilir`)
+  .default([]);
+
+/** "Kişiler" hedefine gönderirken seçilebilecek kişi. E-posta, Teams'teki (kurumsal) adres olmalı. */
+export const TeamsContactSchema = z.object({
+  id: z.string().regex(TEAMS_ID_PATTERN),
+  name: DisplayNameSchema,
+  email: z.email().max(254).transform((e) => e.toLowerCase()),
+});
+export type TeamsContact = z.infer<typeof TeamsContactSchema>;
+
+/** Seçim listelerinde görünen ad, ör. "QA Ekibi · Kanal". */
+export function teamsTargetLabel(t: { name: string; kind: TeamsTargetKind }): string {
+  return `${t.name} · ${TEAMS_TARGET_KINDS[t.kind]}`;
+}
 
 export const PreferencesSchema = z.object({
   /** Bu kadar günden uzun testte bekleyen madde uyarı alır. */
@@ -48,7 +100,12 @@ export const SettingsSchema = z.object({
     })
     .default({}),
   projects: z.record(z.string().regex(PROJECT_KEY_PATTERN), TrackedProjectSchema).default({}),
-  teams: z.object({ targets: z.array(TeamsTargetSchema).max(20).default([]) }).default({ targets: [] }),
+  teams: z
+    .object({
+      targets: z.array(TeamsTargetSchema).max(MAX_TEAMS_TARGETS).default([]),
+      contacts: z.array(TeamsContactSchema).max(MAX_TEAMS_CONTACTS).default([]),
+    })
+    .default({ targets: [], contacts: [] }),
   preferences: PreferencesSchema.default({ staleTestDays: 5, releaseSoonDays: 7 }),
   updatedAt: z.string().optional(),
 });

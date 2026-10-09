@@ -7,6 +7,7 @@ import {
   ProjectSchema,
   ProjectStatusesSchema,
   SearchPageSchema,
+  StatusListSchema,
   type JiraStatus,
   type SearchIssue,
 } from "./schemas";
@@ -54,6 +55,11 @@ export async function getProjectStatuses(jira: JiraClient, projectKey: string): 
   const unique = new Map<string, JiraStatus>();
   for (const type of byType) for (const status of type.statuses) unique.set(status.id, status);
   return [...unique.values()].sort((a, b) => a.name.localeCompare(b.name, "tr"));
+}
+
+/** Jira'daki tüm statüler (kategorileriyle). */
+export function getAllStatuses(jira: JiraClient): Promise<JiraStatus[]> {
+  return jira.get("/rest/api/3/status", { schema: StatusListSchema });
 }
 
 export type SearchOptions = {

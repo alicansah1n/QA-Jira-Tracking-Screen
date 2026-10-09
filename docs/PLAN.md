@@ -111,7 +111,7 @@ Domain katmanı Jira'ya yalnızca arayüz üzerinden erişir → saf, test edile
   - `JIRA_PROJECT_KEYS` kaldırıldı: projeler Ayarlar'da Jira'dan seçiliyor ve statü eşlemesi proje bazında tutuluyor.
 - **Arayüz baştan tasarlandı:**
   - Koyu kenar çubuğu, açık/koyu tema, istatistik kartları, adım göstergeli sihirbazlar, bildirimler.
-  - Sayfalar: Genel Bakış, Gelen Kutusu, Test Takibi, Release'ler, Release Kapat, Ayarlar.
+  - Sayfalar: Genel Bakış, Gelen Kutusu, Test Takibi, Haftalık Rapor, Release'ler, Release Kapat, Ayarlar.
 - **Ağ:** şirket ağı TLS denetimi yapıyorsa Windows sertifika deposu otomatik kullanılıyor (`src/lib/server/system-ca.ts`).
 - **Güvenlik:** Jira geçersiz kimlikle bazı uçlarda anonim cevap verdiği için, Jira'dan okuyan her akış önce `/myself` ile oturumu doğruluyor.
 - **Testler:** 143 test. Sahte Jira ile release kapatmanın tüm kuralları, geri alma ve çökme kurtarma; bilgi talebinin idempotency'si; rapor XSS kontrolü; Teams adres doğrulaması.
@@ -121,6 +121,13 @@ Domain katmanı Jira'ya yalnızca arayüz üzerinden erişir → saf, test edile
   - Madde kapatma: tekrar denemede rapor/yorum ikinci kez gitmiyor; yeniden kapatma açık onay istiyor; test ekranındaki son değişiklik sayfadan ayrılırken kaybolmuyor.
   - Teams kartlarında ham linkler tıklanamaz; görseller yalnızca Atlassian sunucularından (CSP).
   - Testler: 160.
+- **2026-10-09:** Gerçek Jira bağlantısı çalışıyor (401 çözüldü). Teams hedeflerine tür eklendi: **Kanal** ya da **Sohbet** (Workflows "Send webhook alerts to a channel / chat" şablonları). Gönderirken listeden seçiliyor; eski kayıtlar kanal sayılıyor. Ayrıca **Kişiler** türü: tek bir genel Power Automate akışı, uygulama `recipients` e-posta listesini gönderir, akış her kişiye Flow bot ile iletir; kişiler Ayarlar'daki kişi listesinden seçilir (en fazla 50, deneme kartı 3) ve seçim Jira'ya dokunmadan önce doğrulanır; akış `x-qa-key` anahtarını, alıcı sayısını ve alan adını doğrular. Graph (M8) yalnızca Teams'ten listeleme/kendi adına gönderme için gerekirse. Testler: 174. Code + Security Reviewer bulguları uygulandı.
+- **Genel Bakış panosu, ilk sürüm (2026-10-09):** son 24 saat sayıları, 14 günlük proje trendi, dağılımlar. Aynı gün kaldırıldı (aşağıya bakın).
+- **Pano yeniden tasarımı + Haftalık Rapor (2026-10-09):** Gerçek Jira (OZE) incelendi: worklog hiç kullanılmıyor, efor = StoryPointTest; akış Coding → Test → (Completed | To be Deployed | Paused); test sırasında assignee testçiye geçiyor; "Paused" yoğun kullanılıyor (QA'ya atanmış 44 madde). Buna göre:
+  - Pano QA'nın günlük sorularına göre: Testte bekleyen (gecikenler), Sırada, Beklemede, Bu hafta kapattığım (SP ile). Altında aşama sekmeli **iş kuyruğu** (statüde kaç gün, en uzun bekleyen üstte), sade "Dikkat gerekenler" listesi, son 8 haftanın verimi, release'ler. Proje geneli 24 saat/14 gün sayıları, öncelik ve durum dağılımları kaldırıldı (kişisel takip için gürültüydü; öncelik %89 Medium).
+  - Bekleme süresi changelog'dan (`lastStatusChange`) hesaplanıyor; `statuscategorychangedate` Coding → Test gibi aynı kategorideki geçişlerde değişmediği için yanlış sonuç veriyordu.
+  - **Haftalık Rapor** (`/reports`, `src/domain/weekly/`): ISO hafta seçimi; kullanıcının kendi statü geçişlerinden kapattıklarım (done kategorisine geçiş; done → done ve iptal sayılmaz), geri gönderdiklerim, beklemeye aldıklarım, başladıklarım; açtığım Bug'lar; bana atananlar; efor toplamı ve efor eksik maddeler; günlük hareket; önceki haftaya göre değişim. Not alanı, kaydetme (`data/weekly-reports.json`), Markdown kopyalama, Teams'e gönderme (onaylı). Rapor geçmişi tablosu son 12 hafta. Jira'ya yazmaz.
+  - Testler: 207. Code + Security Reviewer bulguları uygulandı.
 - **Açık karar:** Claude Code için proje izin kuralları (`.claude/settings.json`: `.env*` okuma ve ağ komutlarını yasaklama) kullanıcı onayı bekliyor.
 
 ## Teslim Aşamaları ve OMC Rol Dağılımı
