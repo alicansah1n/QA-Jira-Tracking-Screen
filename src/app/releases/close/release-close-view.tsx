@@ -18,14 +18,16 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { RecipientPicker, validContactIds } from "@/components/recipient-picker";
 import { ReleaseProgress, TimingBadge } from "@/components/release-bits";
 import { EnvMissing, ErrorPanel, NoProjects } from "@/components/states";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardHeader, Checkbox, cn, EmptyState, IssueKey, LoadingRows, Notice, PageHeader, Select, Stepper } from "@/components/ui";
 import { JOURNAL_STATE_LABELS, type Journal } from "@/domain/release-close/journal";
 import type { ReleasePlan } from "@/domain/release-close/preflight";
+import { teamsTargetLabel, type TeamsContact } from "@/domain/settings/schema";
 import { api } from "@/lib/client/api";
-import { qk, setupState, useProjectReleases, useSettings } from "@/lib/client/queries";
+import { qk, setupState, useProjectReleases, useSettings, type PublicTeamsTarget } from "@/lib/client/queries";
 import { formatDate, formatDateTime } from "@/lib/format";
 
 const SCENARIOS: Record<ReleasePlan["scenario"], { ok: boolean; title: string; detail: string }> = {
@@ -70,13 +72,20 @@ export function ReleaseCloseView() {
 
   const [confirmed, setConfirmed] = useState(false);
   const [teamsTargetId, setTeamsTargetId] = useState("");
+  const [teamsContactIds, setTeamsContactIds] = useState<string[]>([]);
   const [result, setResult] = useState<Journal | null>(null);
+  // Yalnızca Kişiler hedefinde ve hâlâ kişi listesinde olanlar gönderilir.
+  const sentContactIds = () => {
+    const teams = settings.data?.settings?.teams;
+    const people = teams?.targets.find((t) => t.id === teamsTargetId)?.kind === "people";
+    return people && teams ? validContactIds(teams.contacts, teamsContactIds) : [];
+  };
 
   const execute = useMutation({
     mutationFn: () =>
       api<{ journal: Journal }>("/api/release-close/execute", {
         method: "POST",
-        json: { versionId, fingerprint: plan.data!.fingerprint, teamsTargetId: teamsTargetId || null, confirm: true },
+        json: { versionId, fingerprint: plan.data!.fingerprint, teamsTargetId: teamsTargetId || null, teamsContactIds: sentContactIds(), confirm: true },
       }),
     onSuccess: ({ journal }) => {
       setResult(journal);
@@ -110,6 +119,7 @@ export function ReleaseCloseView() {
   if (setup.envOk && setup.projects.length === 0) return <><Header /><NoProjects what="Release kapatma" /></>;
 
   const teamsTargets = settings.data?.settings?.teams.targets ?? [];
+  const teamsContacts = settings.data?.settings?.teams.contacts ?? [];
   const jiraBaseUrl = settings.data?.env.ok ? settings.data.env.jiraBaseUrl : undefined;
   const stepIndex = result ? 3 : versionId ? (confirmed ? 2 : 1) : 0;
 
@@ -160,7 +170,13 @@ export function ReleaseCloseView() {
       </Card>
 
       {result ? (
-        <ResultView journal={result} teamsTargets={teamsTargets} onDone={() => { setResult(null); navigate(project); }} />
+        <ResultView
+            journal={result}
+            teamsTargets={teamsTargets}
+            teamsContacts={teamsContacts}
+            initialTargetId={teamsTargetId}
+            initialContactIds={teamsContactIds}
+            onDone={() => { setResult(null); navigate(project); }} />
       ) : !versionId ? (
         <div className="space-y-4">
           {setup.projects.length > 1 && (
@@ -218,6 +234,9 @@ export function ReleaseCloseView() {
           teamsTargets={teamsTargets}
           teamsTargetId={teamsTargetId}
           setTeamsTargetId={setTeamsTargetId}
+          teamsContacts={teamsContacts}
+          teamsContactIds={teamsContactIds}
+          setTeamsContactIds={setTeamsContactIds}
           confirmed={confirmed}
           setConfirmed={setConfirmed}
           blockedByActive={active.length > 0}
@@ -247,9 +266,12 @@ function Header() {
 function PreviewView(props: {
   plan: ReleasePlan;
   jiraBaseUrl?: string;
-  teamsTargets: { id: string; name: string }[];
+  teamsTargets: PublicTeamsTarget[];
   teamsTargetId: string;
   setTeamsTargetId: (v: string) => void;
+  teamsContacts: TeamsContact[];
+  teamsContactIds: string[];
+  setTeamsContactIds: (v: string[]) => void;
   confirmed: boolean;
   setConfirmed: (v: boolean) => void;
   blockedByActive: boolean;
@@ -265,6 +287,8 @@ function PreviewView(props: {
   const untouched = plan.issues.filter((i) => i.action === "none");
   const blocked = plan.issues.filter((i) => i.action === "blocked");
   const canRun = plan.canExecute && !props.blockedByActive;
+  const peopleTarget = props.teamsTargets.find((t) => t.id === props.teamsTargetId)?.kind === "people";
+  const teamsReady = !peopleTarget || validContactIds(props.teamsContacts, props.teamsContactIds).length > 0;
 
   return (
     <div className="space-y-6">
@@ -354,11 +378,12 @@ function PreviewView(props: {
                 <option value="">{props.teamsTargets.length ? "Bildirim gönderme" : "Hedef yok (Ayarlar'dan ekleyin)"}</option>
                 {props.teamsTargets.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name}
+                    {teamsTargetLabel(t)}
                   </option>
                 ))}
               </Select>
             </label>
+            {peopleTarget && <RecipientPicker contacts={props.teamsContacts} value={props.teamsContactIds} onChange={props.setTeamsContactIds} />}
             <Checkbox
               label="Ne yapılacağını gördüm, onaylıyorum"
               description="Önizlemeden sonra Jira'da bir şey değişirse işlem başlamaz."
@@ -370,7 +395,7 @@ function PreviewView(props: {
               <Button variant="ghost" onClick={props.onBack}>
                 <ArrowLeft className="size-4" /> Geri
               </Button>
-              <Button variant="primary" className="flex-1" disabled={!canRun || !props.confirmed} loading={props.executing} onClick={props.onExecute}>
+              <Button variant="primary" className="flex-1" disabled={!canRun || !props.confirmed || !teamsReady} loading={props.executing} onClick={props.onExecute}>
                 <Rocket className="size-4" /> Release&apos;i kapat
               </Button>
             </div>
@@ -379,6 +404,11 @@ function PreviewView(props: {
       </div>
     </div>
   );
+}
+
+function notificationLabel(n: Journal["notifications"][number]): string {
+  const name = n.targetKind ? teamsTargetLabel({ name: n.targetName, kind: n.targetKind }) : n.targetName;
+  return n.recipients?.length ? `${name} (${n.recipients.join(", ")})` : name;
 }
 
 function Metric({ label, value, tone }: { label: string; value: number; tone: string }) {
@@ -399,13 +429,35 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function ResultView({ journal, teamsTargets, onDone }: { journal: Journal; teamsTargets: { id: string; name: string }[]; onDone: () => void }) {
+function ResultView({
+  journal,
+  teamsTargets,
+  teamsContacts,
+  initialTargetId,
+  initialContactIds,
+  onDone,
+}: {
+  journal: Journal;
+  teamsTargets: PublicTeamsTarget[];
+  teamsContacts: TeamsContact[];
+  initialTargetId: string;
+  initialContactIds: string[];
+  onDone: () => void;
+}) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [current, setCurrent] = useState(journal);
-  const [target, setTarget] = useState(teamsTargets[0]?.id ?? "");
+  // Yeniden denemede kapatma sırasındaki seçim korunur.
+  const [target, setTarget] = useState(teamsTargets.some((t) => t.id === initialTargetId) ? initialTargetId : (teamsTargets[0]?.id ?? ""));
+  const [contactIds, setContactIds] = useState<string[]>(initialContactIds);
+  const peopleTarget = teamsTargets.find((t) => t.id === target)?.kind === "people";
+  const sendIds = peopleTarget ? validContactIds(teamsContacts, contactIds) : [];
   const notify = useMutation({
-    mutationFn: () => api<{ journal: Journal }>(`/api/release-close/journals/${current.runId}/notify`, { method: "POST", json: { targetId: target, confirm: true } }),
+    mutationFn: () =>
+      api<{ journal: Journal }>(`/api/release-close/journals/${current.runId}/notify`, {
+        method: "POST",
+        json: { targetId: target, contactIds: sendIds, confirm: true },
+      }),
     onSuccess: ({ journal: j }) => {
       setCurrent(j);
       queryClient.invalidateQueries({ queryKey: qk.journals });
@@ -457,23 +509,28 @@ function ResultView({ journal, teamsTargets, onDone }: { journal: Journal; teams
           <BellRing className="size-4 text-info" />
           {lastNotification ? (
             <span className={cn("text-sm", lastNotification.ok ? "text-success" : "text-danger")}>
-              {lastNotification.ok ? `Teams: ${lastNotification.targetName} kanalına bildirildi` : `Teams bildirimi başarısız: ${lastNotification.error}`}
+              {lastNotification.ok ? `Teams'e bildirildi: ${notificationLabel(lastNotification)}` : `Teams bildirimi başarısız: ${lastNotification.error}`}
             </span>
           ) : (
             <span className="text-sm text-muted">Teams bildirimi gönderilmedi.</span>
           )}
           {teamsTargets.length > 0 && (!lastNotification || !lastNotification.ok) && (
             <div className="ml-auto flex items-center gap-2">
-              <Select className="h-8 w-48" value={target} onChange={(e) => setTarget(e.target.value)}>
+              <Select className="h-8 w-auto min-w-48 max-w-72" value={target} onChange={(e) => setTarget(e.target.value)}>
                 {teamsTargets.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name}
+                    {teamsTargetLabel(t)}
                   </option>
                 ))}
               </Select>
-              <Button size="sm" loading={notify.isPending} onClick={() => notify.mutate()} disabled={!target}>
+              <Button size="sm" loading={notify.isPending} onClick={() => notify.mutate()} disabled={!target || (peopleTarget && !sendIds.length)}>
                 Gönder
               </Button>
+            </div>
+          )}
+          {peopleTarget && (!lastNotification || !lastNotification.ok) && (
+            <div className="basis-full">
+              <RecipientPicker contacts={teamsContacts} value={contactIds} onChange={setContactIds} />
             </div>
           )}
         </div>

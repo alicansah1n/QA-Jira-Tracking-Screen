@@ -3,10 +3,12 @@ import { z } from "zod";
 import { ISSUE_KEY_PATTERN } from "@/domain/analysis/schema";
 import { ReleaseCloseError } from "@/domain/release-close/executor";
 import { PROJECT_KEY_PATTERN } from "@/domain/settings/schema";
+import { isWeekId } from "@/domain/weekly/week";
 import { EnvError } from "@/lib/config/env";
 import { JiraSearchLimitError } from "@/lib/jira/api";
 import { JiraError, JiraNetworkError, JiraSchemaError, JiraUnknownOutcomeError } from "@/lib/jira/errors";
 import { StoreError } from "@/lib/store/json-document";
+import { TeamsTargetError } from "@/lib/teams/send";
 import { TeamsError } from "@/lib/teams/webhook";
 import { BodyError } from "./body";
 
@@ -50,6 +52,13 @@ export function projectKeyParam(raw: string | null): string {
   const key = (raw ?? "").toUpperCase();
   if (!PROJECT_KEY_PATTERN.test(key)) throw new AppError(400, "BAD_REQUEST", "Geçersiz proje anahtarı");
   return key;
+}
+
+/** "2026-W41" biçiminde ISO hafta. */
+export function weekParam(raw: string | null): string {
+  const week = (raw ?? "").toUpperCase();
+  if (!isWeekId(week)) throw new AppError(400, "BAD_REQUEST", "Geçersiz hafta");
+  return week;
 }
 
 export function idParam(raw: string): string {
@@ -98,6 +107,7 @@ function toApiError(error: unknown): [number, ApiError] {
   }
   if (error instanceof JiraSchemaError) return [502, { code: "JIRA_SCHEMA", message: error.message }];
   if (error instanceof JiraSearchLimitError) return [502, { code: "JIRA_SEARCH", message: error.message }];
+  if (error instanceof TeamsTargetError) return [422, { code: "TEAMS_TARGET", message: error.message }];
   if (error instanceof TeamsError) return [502, { code: "TEAMS", message: error.message }];
   if (error instanceof StoreError) return [500, { code: "STORE", message: error.message }];
   if (error instanceof BodyError) return [error.status, { code: "BAD_REQUEST", message: error.message }];

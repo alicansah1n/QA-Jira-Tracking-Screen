@@ -39,6 +39,7 @@ export const StatusSchema = z.looseObject({
   statusCategory: z.looseObject({ key: z.string(), name: z.string().optional() }).optional(),
 });
 export type JiraStatus = z.infer<typeof StatusSchema>;
+export const StatusListSchema = z.array(StatusSchema);
 
 /** GET /project/{key}/statuses: issue tipi başına statü listesi */
 export const ProjectStatusesSchema = z.array(
@@ -156,7 +157,10 @@ export const ChangelogBulkSchema = z.looseObject({
           .array(
             z.looseObject({
               created: z.union([z.string(), z.number()]),
-              items: z.array(z.looseObject({ fieldId: z.string().optional(), field: z.string().optional(), to: z.string().nullish() })),
+              author: z.looseObject({ accountId: z.string() }).nullish(),
+              items: z.array(
+                z.looseObject({ fieldId: z.string().optional(), field: z.string().optional(), from: z.string().nullish(), to: z.string().nullish() }),
+              ),
             }),
           )
           .default([]),

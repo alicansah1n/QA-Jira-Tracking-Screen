@@ -28,6 +28,7 @@ const input = (over: Partial<CloseInput> = {}): CloseInput => ({
   attachReport: true,
   transitionId: "31",
   teamsTargetId: null,
+  teamsContactIds: [],
   reclose: false,
   ...over,
 });

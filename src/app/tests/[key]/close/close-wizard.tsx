@@ -3,12 +3,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, BellRing, CheckCircle2, CircleAlert, FileCode2, MessageSquareText, PenLine, ShieldCheck, Workflow, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
+import { RecipientPicker, validContactIds } from "@/components/recipient-picker";
 import { ErrorPanel } from "@/components/states";
 import { Badge, Button, ButtonLink, Card, CardHeader, Checkbox, cn, Field, Input, LoadingRows, Notice, Select, Stepper, Textarea } from "@/components/ui";
 import type { ClosePlan, StepResult } from "@/domain/issue-close/service";
+import { teamsTargetLabel, type TeamsContact } from "@/domain/settings/schema";
 import { VERDICT_LABELS, type RunSummary } from "@/domain/testrun/schema";
 import { api } from "@/lib/client/api";
-import { qk } from "@/lib/client/queries";
+import { qk, type PublicTeamsTarget } from "@/lib/client/queries";
 
 type Defaults = {
   me: { accountId: string; displayName: string };
@@ -17,7 +19,8 @@ type Defaults = {
   summary: RunSummary;
   closedAt: string | null;
   fieldsMapped: { testAssignee: boolean; storyPointTest: boolean };
-  teamsTargets: { id: string; name: string }[];
+  teamsTargets: Omit<PublicTeamsTarget, "url">[];
+  teamsContacts: TeamsContact[];
 };
 
 type Form = {
@@ -29,6 +32,7 @@ type Form = {
   attachReport: boolean;
   transitionId: string;
   teamsTargetId: string;
+  teamsContactIds: string[];
 };
 
 type ExecuteResult = { results: StepResult[]; completed: boolean; plan: ClosePlan; teams?: { ok: boolean; message?: string } };
@@ -60,6 +64,7 @@ export function CloseWizard({ issueKey }: { issueKey: string }) {
       attachReport: true,
       transitionId: done?.id ?? "",
       teamsTargetId: "",
+      teamsContactIds: [],
       reclose: false,
     });
   }, [defaults.data, form]);
@@ -75,6 +80,7 @@ export function CloseWizard({ issueKey }: { issueKey: string }) {
       attachReport: f.attachReport,
       transitionId: f.transitionId || null,
       teamsTargetId: f.teamsTargetId || null,
+      teamsContactIds: d.teamsTargets.find((t) => t.id === f.teamsTargetId)?.kind === "people" ? validContactIds(d.teamsContacts, f.teamsContactIds) : [],
       reclose: f.reclose,
     };
   };
@@ -94,6 +100,9 @@ export function CloseWizard({ issueKey }: { issueKey: string }) {
   if (!form) return null;
   const d = defaults.data;
   const set = (patch: Partial<Form>) => setForm({ ...form, ...patch });
+  const selectedTarget = d?.teamsTargets.find((t) => t.id === form.teamsTargetId);
+  const peopleTarget = selectedTarget?.kind === "people";
+  const selectedContacts = peopleTarget ? d.teamsContacts.filter((c) => form.teamsContactIds.includes(c.id)) : [];
   const spInvalid = form.storyPointTest.trim() !== "" && !Number.isFinite(Number(form.storyPointTest.replace(",", ".")));
 
   return (
@@ -179,11 +188,14 @@ export function CloseWizard({ issueKey }: { issueKey: string }) {
                     <option value="">Bildirim gönderme</option>
                     {d.teamsTargets.map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.name}
+                        {teamsTargetLabel(t)}
                       </option>
                     ))}
                   </Select>
                 </Field>
+                {peopleTarget && (
+                  <RecipientPicker contacts={d.teamsContacts} value={form.teamsContactIds} onChange={(ids) => set({ teamsContactIds: ids })} />
+                )}
               </div>
             </Card>
             <div className="flex justify-end gap-2">
@@ -192,7 +204,7 @@ export function CloseWizard({ issueKey }: { issueKey: string }) {
               </ButtonLink>
               <Button
                 variant="primary"
-                disabled={spInvalid}
+                disabled={spInvalid || (peopleTarget && !selectedContacts.length)}
                 loading={plan.isPending}
                 onClick={() =>
                   plan.mutate(undefined, {
@@ -238,7 +250,8 @@ export function CloseWizard({ issueKey }: { issueKey: string }) {
                 </span>
                 <div>
                   <p className="text-sm font-semibold">Teams bildirimi</p>
-                  <p className="text-[13px] text-muted">{d.teamsTargets.find((t) => t.id === form.teamsTargetId)?.name} — Jira işlemleri başarılı olursa</p>
+                  <p className="text-[13px] text-muted">{selectedTarget && teamsTargetLabel(selectedTarget)}
+                    {selectedContacts.length > 0 && ` (${selectedContacts.map((c) => c.name).join(", ")})`} — Jira işlemleri başarılı olursa</p>
                 </div>
               </li>
             )}

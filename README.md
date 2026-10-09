@@ -2,6 +2,8 @@
 
 Jira test ve release süreçlerini hızlandıran, **kendi bilgisayarınızda** çalışan web uygulaması.
 
+- **Genel Bakış:** testte bekleyen, sırada ve beklemedeki maddeleriniz; her maddenin kaç gündür o statüde olduğu; dikkat gerekenler ve son 8 haftanın verimi.
+- **Haftalık Rapor:** hafta hafta kapattığınız maddeler ve StoryPointTest eforu, bulduğunuz buglar, beklemeye aldıklarınız, size gelenler. Not ekleyip kaydedebilir, Markdown olarak kopyalayabilir ya da Teams'e gönderebilirsiniz.
 - **Gelen Kutusu:** size atanan açık maddeler. Son 24 saatte gelenler, analizi bekleyenler ve bilgi talebi gerekenler ayrı filtrelenir.
 - **Developer bilgi talebi:** component'i ve yorumu olmayan maddelerde, Developer alanındaki kişiyi etiketleyen hazır bir yorum taslağı oluşur. Siz onaylarsınız; aynı maddeye asla iki kez yazılmaz.
 - **Test Takibi:** Claude Code'da üretilen test case'leri ekranda Başarılı / Başarısız / Bloke / Atlandı olarak işaretlersiniz. Sonuçtan estetik bir **HTML rapor** oluşur.
@@ -39,8 +41,20 @@ Ardından **Ayarlar** sayfasında:
 1. Bağlantı testinin yeşil olduğunu görün.
 2. Alan eşlemesini kontrol edin: Developer, Test Assignee, StoryPointTest.
 3. **Proje ekle** ile takip edeceğiniz projeleri Jira'dan seçin. To be Deployed, Completed ve "testte" statülerini eşleyin.
-4. İsterseniz bir Teams kanalı ekleyin (Workflows → "Post to a channel when a webhook request is received").
+4. İsterseniz Teams hedefi ekleyin (aşağıya bakın).
 5. Kaydedin.
+
+### Teams bildirimleri
+
+Uygulama Teams'e **İş Akışları (Workflows) web kancası** ile gönderir; IT onayı gerekmez. Üç hedef türü var:
+
+| Tür | Ne zaman | Kurulum |
+|---|---|---|
+| **Kanal** | Bir ekip kanalına | Kanalın ⋯ menüsü → İş Akışları → aramaya `web kancası` → adında "kanal" geçen şablon |
+| **Sohbet** | Sabit bir grup sohbetine | Sohbetin ⋯ menüsü → İş Akışları → `web kancası` → adında "sohbet" geçen şablon |
+| **Kişiler** | Her gönderimde seçtiğiniz kişilere | Bir kez kurulan genel akış (adımlar Ayarlar'da, hedef türü "Kişiler" seçilince görünür) |
+
+**Kişiler** türünde uygulama karta ek olarak seçilen kişilerin e-postalarını (`recipients`) gönderir. Akış listedeki her kişiye kartı Workflows botu sohbetinden ayrı ayrı iletir. Kişiler yalnızca Ayarlar → **Teams kişileri** listesinden seçilebilir; bir gönderimde en fazla 50 kişi. Her Kişiler hedefinin uygulamanın ürettiği bir **akış anahtarı** vardır (`x-qa-key` başlığı); akış bunu, alıcı sayısını ve şirket alan adını kontrol eder. Adres ve anahtar şifre gibidir. E-posta, kişinin Teams'te kullandığı kurumsal adres olmalı.
 
 Şirket ağı HTTPS trafiğini kendi sertifikasıyla inceliyorsa, uygulama Windows'un güvendiği sertifikaları otomatik olarak kullanır.
 
@@ -81,14 +95,15 @@ JSON sözleşmesi: [src/domain/analysis/schema.ts](src/domain/analysis/schema.ts
 
 ## Durum ve yapılacaklar
 
-Otomatik testler (`npm test`, 160 test) sahte bir Jira'ya karşı çalışır. Gerçek Jira ile uçtan uca deneme henüz yapılmadı. Aşağıdaki listeyi sırayla uygulayın; Jira'ya yazan adımları ilk kez **test amaçlı bir madde ve release** üzerinde deneyin.
+Otomatik testler (`npm test`, 207 test) sahte bir Jira'ya karşı çalışır. Gerçek Jira ile uçtan uca deneme henüz yapılmadı. Aşağıdaki listeyi sırayla uygulayın; Jira'ya yazan adımları ilk kez **test amaçlı bir madde ve release** üzerinde deneyin.
 
 ### 1. Kurulum ve bağlantı
 - [ ] `.env.local` doldurulmuş: klasik API token (*Create API token*, scope'lu olan değil) ve token'ı oluşturan hesabın e-postası
 - [ ] `npm run dev` → Ayarlar → **Jira bağlantısı** yeşil, adınız görünüyor
 - [ ] Alan eşlemesi doğru: Developer, Test Assignee, StoryPointTest
 - [ ] **Proje ekle** ile proje eklendi; To be Deployed, Completed ve "testte" statüleri doğru; **Kaydet**
-- [ ] (Opsiyonel) Teams hedefi eklendi; deneme kartı kanala düştü
+- [ ] (Opsiyonel) Teams hedefi eklendi; deneme kartı kanala/sohbete düştü
+- [ ] (Opsiyonel) Kişiler akışı kuruldu, kişi listesi dolduruldu; seçilen kişilere deneme kartı ayrı ayrı geldi
 
 ### 2. Gelen Kutusu
 - [ ] Size atanmış açık maddeler listeleniyor; "Yeni" rozetleri son 24 saattekilerde
@@ -113,7 +128,7 @@ Otomatik testler (`npm test`, 160 test) sahte bir Jira'ya karşı çalışır. G
 ### Açık işler
 - [ ] Claude Code proje izin kuralları (`.claude/settings.json`: `.env*` okuma ve ağ komutlarını yasaklama) — karar bekliyor
 - [ ] Gerçek Jira ile deneme sonrası çıkan hataların düzeltilmesi ve tasarım geri bildirimleri
-- [ ] (Opsiyonel) Microsoft Graph ile Teams'te kişiye/sohbete mesaj — IT'nin Azure uygulama onayı gerekir
+- [ ] (Opsiyonel) Microsoft Graph ile sohbetleri/kişileri Teams'ten listeleme ve kendi adınıza gönderme — IT'nin Azure uygulama onayı gerekir
 
 ## Güvenlik
 

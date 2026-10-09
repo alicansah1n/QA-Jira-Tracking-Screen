@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TeamsTargetKindSchema } from "@/domain/settings/schema";
 
 /**
  * Release kapatma günlüğü. Her Jira yazmasından önce adım `pending`, sonra `done` olarak diske yazılır;
@@ -20,6 +21,10 @@ export type JournalStep = z.infer<typeof JournalStepSchema>;
 export const NotificationSchema = z.object({
   targetId: z.string(),
   targetName: z.string(),
+  // Tür eklenmeden önceki kayıtlarda yok.
+  targetKind: TeamsTargetKindSchema.optional(),
+  /** Kişiler hedefinde kartın iletildiği kişilerin adları. */
+  recipients: z.array(z.string()).optional(),
   at: z.string(),
   ok: z.boolean(),
   error: z.string().optional(),

@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import type { AdfNode } from "./adf/to-markdown";
 import type { JiraClient } from "./client";
+import { JiraSearchLimitError } from "./api";
 import { JiraError } from "./errors";
 import {
   ChangelogBulkSchema,
@@ -181,6 +182,45 @@ export function setVersionReleased(jira: JiraClient, versionId: string, released
 }
 
 // ── Statü geçmişi ─────────────────────────────────────────────────────────────
+
+const MAX_HISTORY_PAGES = 200;
+
+export type HistoryChange = { issueId: string; at: number; authorId?: string; field: string; from?: string; to?: string };
+
+/** Maddelerin verilen alanlardaki tüm değişiklikleri (toplu changelog API'si). */
+export async function issueHistories(jira: JiraClient, issueIds: readonly string[], fieldIds: readonly string[]): Promise<HistoryChange[]> {
+  const out: HistoryChange[] = [];
+  for (let i = 0; i < issueIds.length; i += 1000) {
+    const chunk = issueIds.slice(i, i + 1000);
+    const seen = new Set<string>();
+    let nextPageToken: string | undefined;
+    let pages = 0;
+    do {
+      // İlerleyen ama bitmeyen bir sayfalama sonsuz döngüye ve bellek şişmesine yol açmasın.
+      if (++pages > MAX_HISTORY_PAGES) throw new JiraSearchLimitError("changelog", "changelog sayfa sınırı aşıldı");
+      const page = await jira.post("/rest/api/3/changelog/bulkfetch", {
+        json: { issueIdsOrKeys: chunk, fieldIds, maxResults: 1000, nextPageToken },
+        schema: ChangelogBulkSchema,
+        idempotent: true,
+      });
+      for (const log of page.issueChangeLogs) {
+        for (const h of log.changeHistories) {
+          const at = typeof h.created === "number" ? h.created : Date.parse(h.created);
+          if (Number.isNaN(at)) continue;
+          for (const it of h.items) {
+            const field = it.fieldId ?? it.field;
+            if (!field || !fieldIds.includes(field)) continue;
+            out.push({ issueId: log.issueId, at, authorId: h.author?.accountId, field, from: it.from ?? undefined, to: it.to ?? undefined });
+          }
+        }
+      }
+      nextPageToken = page.nextPageToken ?? undefined;
+      if (nextPageToken && seen.has(nextPageToken)) throw new JiraSearchLimitError("changelog", "Jira sayfalaması ilerlemiyor");
+      if (nextPageToken) seen.add(nextPageToken);
+    } while (nextPageToken);
+  }
+  return out;
+}
 
 /**
  * Her madde için "şu anki statüye en son ne zaman girildi" bilgisini döndürür.

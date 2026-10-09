@@ -2,7 +2,7 @@ import "server-only";
 import type { AnalysisStore } from "@/domain/analysis/store";
 import { rowFields, toIssueRow, type IssueRow } from "@/domain/issues/row";
 import { searchAll } from "@/lib/jira/api";
-import { addComment, findCommentsWithProperty, getIssueProperty, setIssueProperty } from "@/lib/jira/operations";
+import { addComment, findCommentsWithProperty, getIssueProperty, lastStatusChange, setIssueProperty } from "@/lib/jira/operations";
 import { JiraSchemaError, JiraUnknownOutcomeError } from "@/lib/jira/errors";
 import type { Context } from "@/lib/server/context";
 import {
@@ -22,6 +22,11 @@ export type AnalysisState = "none" | "ok" | "stale" | "invalid";
 
 export type InboxItem = IssueRow & {
   isNew: boolean;
+  /**
+   * Şu anki statüye giriş anı (changelog). `statusCategoryChangedAt` yetmez: Coding → Test gibi aynı
+   * kategorideki geçişlerde değişmez.
+   */
+  statusSince?: string;
   analysis: { state: AnalysisState; testCases?: number; overview?: string };
   devRequest: { eligibility: DevRequestEligibility; ledger?: LedgerEntry; preview?: string };
 };
@@ -46,6 +51,10 @@ export async function listInbox(ctx: Context, analyses: AnalysisStore, now = new
   });
   const ledger = await ctx.ledger.read();
   const entries = await analyses.list();
+  const since = await lastStatusChange(
+    ctx.jira,
+    rows.map((r) => ({ id: r.id, statusId: r.status.id, fallback: r.statusCategoryChangedAt ?? r.created })),
+  );
   const byKey = new Map(entries.map((e) => [e.key, e]));
 
   const items = rows.map((row): InboxItem => {
@@ -64,6 +73,7 @@ export async function listInbox(ctx: Context, analyses: AnalysisStore, now = new
     return {
       ...row,
       isNew: firstSeen ? now.getTime() - Date.parse(firstSeen) < NEW_WINDOW_MS : true,
+      statusSince: since.get(row.id),
       analysis,
       devRequest: {
         eligibility,

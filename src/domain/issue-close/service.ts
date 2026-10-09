@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import type { IssueAnalysis } from "@/domain/analysis/schema";
 import { renderReport, reportFilename } from "@/domain/report/html";
+import { TEAMS_ID_PATTERN, TeamsContactIdsSchema } from "@/domain/settings/schema";
 import { CASE_STATUS_LABELS, VERDICT_LABELS, emptyRun, summarizeRun, type TestRun } from "@/domain/testrun/schema";
 import { plainTextToAdf } from "@/lib/jira/adf/build";
 import { JiraError, JiraSchemaError, JiraUnknownOutcomeError } from "@/lib/jira/errors";
@@ -24,7 +25,8 @@ export const CloseInputSchema = z.object({
   comment: z.string().trim().max(20_000),
   attachReport: z.boolean(),
   transitionId: z.string().nullable(),
-  teamsTargetId: z.string().nullable().default(null),
+  teamsTargetId: z.string().regex(TEAMS_ID_PATTERN).nullable().default(null),
+  teamsContactIds: TeamsContactIdsSchema,
   /** Daha önce bu uygulamadan kapatılmış maddeyi bilerek yeniden kapatmak. */
   reclose: z.boolean().default(false),
 });

@@ -10,7 +10,6 @@ export default function SettingsPage() {
       <PageHeader
         eyebrow="Sistem"
         title="Ayarlar"
-        description="Jira bağlantısı, takip edilen projeler, alan/statü eşlemesi ve Teams bildirimleri."
       />
       <SettingsView />
     </>

@@ -7,7 +7,7 @@ import { readJsonBody } from "@/lib/server/body";
 import { getAnalysisStore, getContext, jiraBrowseUrl } from "@/lib/server/context";
 import { AppError, handle, issueKeyParam } from "@/lib/server/respond";
 import { testClosedCard } from "@/lib/teams/cards";
-import { sendTeamsCard } from "@/lib/teams/webhook";
+import { deliverTeamsCard, resolveTeamsTarget } from "@/lib/teams/send";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +32,8 @@ export async function GET(_: Request, ctx: RouteContext<"/api/issues/[key]/close
       summary: summarizeRun(analysis, run),
       closedAt: run?.closedAt ?? null,
       fieldsMapped: { testAssignee: Boolean(settings.fields.testAssignee), storyPointTest: Boolean(settings.fields.storyPointTest) },
-      teamsTargets: settings.teams.targets.map((t) => ({ id: t.id, name: t.name })),
+      teamsTargets: settings.teams.targets.map((t) => ({ id: t.id, name: t.name, kind: t.kind })),
+      teamsContacts: settings.teams.contacts,
     });
   });
 }
@@ -45,30 +46,31 @@ export async function POST(request: Request, ctx: RouteContext<"/api/issues/[key
     const key = issueKeyParam((await ctx.params).key);
     const input = ExecuteSchema.parse(await readJsonBody(request, 64 * 1024));
     const { c, analysis, run } = await load(key);
+    const selection = input.teamsTargetId ? { targetId: input.teamsTargetId, contactIds: input.teamsContactIds } : null;
+    // Bildirim seçimi (hedef, kişiler) Jira'ya dokunmadan önce doğrulanır.
+    if (selection) resolveTeamsTarget(await c.settings.read(), selection);
     const issueUrl = jiraBrowseUrl(key) ?? "";
     const outcome = await executeClose(c, key, input, analysis, run, issueUrl);
 
     let teams: { ok: boolean; message?: string } | undefined;
-    if (outcome.completed && input.teamsTargetId) {
-      const target = (await c.settings.read()).teams.targets.find((t) => t.id === input.teamsTargetId);
-      if (target) {
-        const s = summarizeRun(analysis, run);
-        try {
-          await sendTeamsCard(
-            target.url,
-            testClosedCard({
-              issueKey: key,
-              summary: analysis.issue.summary,
-              verdict: VERDICT_LABELS[s.verdict],
-              counts: { ...s.counts, total: s.total },
-              tester: input.testAssignee?.displayName ?? (await c.myself()).displayName,
-              issueUrl,
-            }),
-          );
-          teams = { ok: true };
-        } catch (error) {
-          teams = { ok: false, message: error instanceof Error ? error.message : "Teams'e gönderilemedi" };
-        }
+    if (outcome.completed && selection) {
+      const s = summarizeRun(analysis, run);
+      try {
+        // Jira adımları sürerken hedef ya da kişi silinmiş olabilir; güncel ayarlarla yeniden çözülür.
+        await deliverTeamsCard(
+          resolveTeamsTarget(await c.settings.read(), selection),
+          testClosedCard({
+            issueKey: key,
+            summary: analysis.issue.summary,
+            verdict: VERDICT_LABELS[s.verdict],
+            counts: { ...s.counts, total: s.total },
+            tester: input.testAssignee?.displayName ?? (await c.myself()).displayName,
+            issueUrl,
+          }),
+        );
+        teams = { ok: true };
+      } catch (error) {
+        teams = { ok: false, message: error instanceof Error ? error.message : "Teams'e gönderilemedi" };
       }
     }
     return Response.json({ ...outcome, teams });
